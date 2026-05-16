@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TKXT — NFT Tickets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --border: #2a2a2a;
+    --accent: #e8ff47;
+    --accent2: #47ffb8;
+    --danger: #ff4747;
+    --text: #f0f0f0;
+    --muted: #666;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'Space Mono', monospace;
+    --radius: 4px;
+    --radius-lg: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Grid noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(232,255,71,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,255,71,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Layout ── */
+  #app { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky; top: 0;
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
+  .logo {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+  }
+  .logo span { color: var(--text); }
+
+  /* ── Wallet bar ── */
+  #wallet-bar { display: flex; align-items: center; gap: 12px; }
+  #wallet-address {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    display: none;
+  }
+  #owner-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--accent);
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: none;
+  }
+  #btn-disconnect {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    display: none;
+  }
+  #btn-disconnect:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Nav ── */
+  nav {
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+  }
+  nav button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 14px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  #nav-admin { display: none; }
+
+  /* ── Pages ── */
+  main { flex: 1; padding: 2.5rem 2rem; max-width: 760px; margin: 0 auto; width: 100%; }
+  .page { display: none; animation: fadeUp 0.2s ease; }
+  .page.active { display: block; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Section heading ── */
+  .page-title {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+  }
+  .page-title span { color: var(--accent); }
+  .page-subtitle { color: var(--muted); font-size: 12px; margin-bottom: 2rem; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .card-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  /* ── Form elements ── */
+  label { display: block; font-size: 11px; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 6px; }
+  input, select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 1rem;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+  select option { background: var(--surface2); }
+
+  /* ── Buttons ── */
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 11px 24px;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: var(--bg); }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover:not(:disabled) { opacity: 0.85; }
+  .btn-connect { background: var(--accent); color: var(--bg); font-size: 11px; padding: 8px 16px; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 2rem; left: 50%; transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 20px;
+    border-radius: var(--radius-lg);
+    font-size: 12px;
+    z-index: 999;
+    max-width: 420px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #toast.success { border-color: var(--accent2); color: var(--accent2); }
+  #toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Ticket card ── */
+  .ticket-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .ticket-card.used { opacity: 0.45; }
+  .ticket-meta { flex: 1; }
+  .ticket-id {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .ticket-event { font-size: 13px; margin-bottom: 4px; }
+  .ticket-owner { font-size: 10px; color: var(--muted); word-break: break-all; }
+  .ticket-status {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: var(--radius);
+  }
+  .ticket-status.valid { background: rgba(71,255,184,0.12); color: var(--accent2); border: 1px solid rgba(71,255,184,0.3); }
+  .ticket-status.used { background: rgba(255,71,71,0.12); color: var(--danger); border: 1px solid rgba(255,71,71,0.3); }
+
+  /* ── QR modal ── */
+  #qr-modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  #qr-modal.open { display: flex; }
+  .qr-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    text-align: center;
+    max-width: 340px;
+    width: 90%;
+  }
+  .qr-box h3 { font-family: var(--font-display); font-size: 18px; margin-bottom: 4px; }
+  .qr-box p { font-size: 11px; color: var(--muted); margin-bottom: 1.5rem; }
+  #qr-canvas { margin: 0 auto 1.5rem; display: flex; justify-content: center; }
+  #qr-canvas canvas, #qr-canvas img { border: 6px solid #fff; border-radius: 4px; }
+  .qr-hash { font-size: 10px; color: var(--muted); word-break: break-all; margin-bottom: 1.5rem; }
+
+  /* ── Check-in result ── */
+  .checkin-result {
+    padding: 1.25rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    margin-top: 1rem;
+    display: none;
+  }
+  .checkin-result.valid { border-color: rgba(71,255,184,0.4); background: rgba(71,255,184,0.06); }
+  .checkin-result.invalid { border-color: rgba(255,71,71,0.4); background: rgba(255,71,71,0.06); }
+  .checkin-result .result-icon { font-size: 32px; margin-bottom: 8px; }
+  .checkin-result .result-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .checkin-result .result-detail { font-size: 11px; color: var(--muted); }
+
+  /* ── Admin table ── */
+  .admin-table { width: 100%; border-collapse: collapse; }
+  .admin-table th {
+    text-align: left;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 10px;
+  }
+  .admin-table td {
+    padding: 10px 10px;
+    border-bottom: 1px solid rgba(42,42,42,0.5);
+    font-size: 12px;
+    vertical-align: middle;
+  }
+  .admin-table tr:last-child td { border-bottom: none; }
+  .mono-sm { font-size: 10px; color: var(--muted); word-break: break-all; }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(0,0,0,0.3);
+    border-top-color: var(--bg);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 3rem;
+    color: var(--muted);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .empty .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+
+  /* ── Connect wall ── */
+  #connect-wall {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 5rem 2rem;
+    text-align: center;
+  }
+  #connect-wall h2 { font-family: var(--font-display); font-size: 32px; font-weight: 800; }
+  #connect-wall p { color: var(--muted); max-width: 340px; }
+
+  .form-row { display: flex; gap: 12px; }
+  .form-row > * { flex: 1; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── QR Scanner ── */
+  #scanner-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    background: #000;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 1rem;
+    display: none;
+  }
+  #scanner-video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  #scanner-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  #scanner-frame {
+    width: 62%; aspect-ratio: 1;
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+    position: relative;
+  }
+  #scanner-frame::before, #scanner-frame::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border-color: var(--accent); border-style: solid;
+  }
+  #scanner-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+  #scanner-frame::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+  #scanner-line {
+    position: absolute; left: 6%; right: 6%; height: 2px;
+    background: var(--accent);
+    opacity: 0.8;
+    animation: scanline 2s ease-in-out infinite;
+  }
+  @keyframes scanline {
+    0%   { top: 8%; }
+    50%  { top: 88%; }
+    100% { top: 8%; }
+  }
+  #scanner-status {
+    position: absolute; bottom: 12px; left: 0; right: 0;
+    text-align: center; font-size: 11px; color: rgba(255,255,255,0.7);
+    letter-spacing: 0.5px;
+  }
+  .scan-tabs { display: flex; gap: 0; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .scan-tab {
+    flex: 1; padding: 9px; background: none; border: none;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted); cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .scan-tab.active { background: var(--surface2); color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">TKXT<span>.</span></div>
+    <div id="wallet-bar">
+      <span id="owner-badge">Owner</span>
+      <span id="wallet-address"></span>
+      <button id="btn-disconnect" onclick="disconnect()">Disconnect</button>
+      <button class="btn btn-connect" id="btn-connect" onclick="connectWallet()">Connect MetaMask</button>
+    </div>
+  </header>
+
+  <!-- Nav -->
+  <nav id="main-nav" style="display:none">
+    <button class="active" onclick="showPage('mint')" id="nav-mint">Mint</button>
+    <button onclick="showPage('tickets')" id="nav-tickets">My Tickets</button>
+    <button onclick="showPage('checkin')" id="nav-checkin">Check-in</button>
+    <button onclick="showPage('admin')" id="nav-admin">Admin</button>
+  </nav>
+
+  <!-- Connect wall shown before wallet connected -->
+  <div id="connect-wall">
+    <h2>NFT <span style="color:var(--accent)">Tickets</span></h2>
+    <p>Connect your MetaMask wallet to mint tickets, view your collection, and check in to events.</p>
+    <button class="btn btn-primary" onclick="connectWallet()">Connect MetaMask</button>
+  </div>
+
+  <!-- Main app content (hidden until connected) -->
+  <main id="main-content" style="display:none">
+
+    <!-- ── MINT PAGE ── -->
+    <div class="page active" id="page-mint">
+      <div class="page-title">Mint <span>Ticket</span></div>
+      <div class="page-subtitle">Issue a new NFT ticket to any wallet address.</div>
+
+      <div class="card">
+        <div class="card-label">Ticket Details</div>
+        <label>Recipient wallet address</label>
+        <input type="text" id="mint-wallet" placeholder="0x..." />
+        <label>Event name</label>
+        <input type="text" id="mint-event" placeholder="e.g. Devcon 2025" />
+        <button class="btn btn-primary" id="btn-mint" onclick="mintTicket()">
+          Mint Ticket
+        </button>
+      </div>
+
+      <div class="card" id="mint-result" style="display:none">
+        <div class="card-label">Minted Successfully</div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Token ID</div>
+          <div id="mr-tokenid" style="font-family:var(--font-display);font-size:28px;font-weight:800;color:var(--accent)"></div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Check-in Hash (store this securely)</div>
+          <div id="mr-hash" class="mono-sm" style="font-size:11px;color:var(--text);word-break:break-all;padding:8px;background:var(--surface2);border-radius:4px;border:1px solid var(--border)"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Tx Hash</div>
+          <div id="mr-txhash" class="mono-sm"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TICKETS PAGE ── -->
+    <div class="page" id="page-tickets">
+      <div class="page-title">My <span>Tickets</span></div>
+      <div class="page-subtitle">NFT tickets owned by your connected wallet.</div>
+      <button class="btn btn-secondary" style="margin-bottom:1.5rem" onclick="loadMyTickets()">↻ Refresh</button>
+      <div id="tickets-list"></div>
+    </div>
+
+    <!-- ── CHECKIN PAGE ── -->
+    <div class="page" id="page-checkin">
+      <div class="page-title">Check<span>-in</span></div>
+      <div class="page-subtitle">Scan a ticket QR or enter details manually. Only the contract owner can mark tickets as used.</div>
+
+      <div class="card">
+        <div class="card-label">Verify Ticket</div>
+
+        <!-- Mode tabs -->
+        <div class="scan-tabs">
+          <button class="scan-tab active" id="tab-scan" onclick="switchTab('scan')">📷 Scan QR</button>
+          <button class="scan-tab" id="tab-manual" onclick="switchTab('manual')">✏ Manual</button>
+        </div>
+
+        <!-- Camera scanner -->
+        <div id="scanner-wrap">
+          <video id="scanner-video" autoplay playsinline muted></video>
+          <div id="scanner-overlay">
+            <div id="scanner-frame">
+              <div id="scanner-line"></div>
+            </div>
+          </div>
+          <div id="scanner-status">Point camera at ticket QR code</div>
+        </div>
+        <button class="btn btn-secondary" id="btn-camera" onclick="toggleCamera()" style="width:100%;margin-bottom:1rem">
+          Start Camera
+        </button>
+
+        <!-- Manual inputs (shown in manual tab) -->
+        <div id="manual-inputs" style="display:none">
+          <div class="form-row">
+            <div>
+              <label>Token ID</label>
+              <input type="number" id="ci-tokenid" placeholder="0" min="0"/>
+            </div>
+            <div>
+              <label>Check-in Hash (0x…)</label>
+              <input type="text" id="ci-hash" placeholder="0x..." />
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-checkin" onclick="checkIn()" style="width:100%">Verify &amp; Check In</button>
+      </div>
+
+      <div class="checkin-result" id="ci-result">
+        <div class="result-icon" id="ci-icon"></div>
+        <div class="result-title" id="ci-title"></div>
+        <div class="result-detail" id="ci-detail"></div>
+      </div>
+    </div>
+
+    <!-- ── ADMIN PAGE ── -->
+    <div class="page" id="page-admin">
+      <div class="page-title">Admin <span>Panel</span></div>
+      <div class="page-subtitle">Owner-only view of all minted tickets.</div>
+      <button class="btn btn-secondary" style="margin-bottom:1.5rem" onclick="loadAllTickets()">↻ Refresh</button>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="admin-table" id="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Event</th>
+              <th>Owner</th>
+              <th>Hash</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="admin-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- QR Modal -->
+  <div id="qr-modal" onclick="closeQR(event)">
+    <div class="qr-box" onclick="event.stopPropagation()">
+      <h3>Ticket <span id="qr-token-label" style="color:var(--accent)"></span></h3>
+      <p id="qr-event-label"></p>
+      <div id="qr-canvas"></div>
+      <div class="qr-hash" id="qr-hash-label"></div>
+      <button class="btn btn-secondary" style="width:100%" onclick="closeQR()">Close</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+// contract.json is written by the deploy script into this same folder.
+// In a real dev setup it's fetched from the same origin.
+let CONTRACT_ADDRESS = null;
+let CONTRACT_ABI = null;
+
+// ── State ───────────────────────────────────────────────────────────────────
+let provider = null;
+let signer = null;
+let contract = null;
+let currentAccount = null;
+let contractOwner = null;
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+async function boot() {
+  try {
+    const res = await fetch('./contract.json');
+    if (!res.ok) throw new Error('contract.json not found');
+    const info = await res.json();
+    CONTRACT_ADDRESS = info.address;
+    CONTRACT_ABI = info.abi;
+  } catch (e) {
+    showToast('⚠ Run `npm run dev` first to deploy the contract.', 'error', 6000);
+    return;
+  }
+
+  if (window.ethereum && window.ethereum.selectedAddress) {
+    await connectWallet(true);
+  }
+}
+
+// ── Wallet ──────────────────────────────────────────────────────────────────
+async function connectWallet(silent = false) {
+  if (!window.ethereum) {
+    showToast('MetaMask not found. Install it first.', 'error');
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    currentAccount = accounts[0];
+
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+    contractOwner = (await contract.owner()).toLowerCase();
+    const isOwner = currentAccount.toLowerCase() === contractOwner;
+
+    // UI updates
+    document.getElementById('connect-wall').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('btn-connect').style.display = 'none';
+    document.getElementById('btn-disconnect').style.display = 'block';
+    document.getElementById('wallet-address').style.display = 'block';
+    document.getElementById('wallet-address').textContent = shortAddr(currentAccount);
+
+    if (isOwner) {
+      document.getElementById('owner-badge').style.display = 'inline';
+      document.getElementById('nav-admin').style.display = 'inline';
+    }
+
+    if (!silent) showToast('Wallet connected ✓', 'success');
+
+    // Auto-load tickets page data when visiting
+    loadMyTickets();
+
+    // React to account changes
+    window.ethereum.on('accountsChanged', () => location.reload());
+    window.ethereum.on('chainChanged', () => location.reload());
+
+  } catch (e) {
+    if (!silent) showToast('Connection rejected.', 'error');
+  }
+}
+
+// ── Disconnect ───────────────────────────────────────────────────────────────
+async function disconnect() {
+  try {
+    await window.ethereum.request({
+      method: 'wallet_revokePermissions',
+      params: [{ eth_accounts: {} }]
+    });
+  } catch (e) {
+    // Older MetaMask versions don't support revokePermissions — fall through to reload
+  }
+  currentAccount = null;
+  signer = null;
+  contract = null;
+  contractOwner = null;
+  location.reload();
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function showPage(name) {
+  // Stop camera if navigating away from check-in
+  if (name !== 'checkin' && scannerActive) stopCamera();
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+
+  if (name === 'tickets') loadMyTickets();
+  if (name === 'admin') loadAllTickets();
+  if (name === 'checkin') {
+    // Reset to scan tab on every visit
+    switchTab('scan');
+    document.getElementById('scanner-wrap').style.display = 'block';
+  }
+}
+
+// ── Mint ────────────────────────────────────────────────────────────────────
+async function mintTicket() {
+  const wallet = document.getElementById('mint-wallet').value.trim();
+  const eventName = document.getElementById('mint-event').value.trim();
+
+  if (!ethers.isAddress(wallet)) { showToast('Invalid wallet address.', 'error'); return; }
+  if (!eventName) { showToast('Enter an event name.', 'error'); return; }
+
+  // Generate a random secret and derive the on-chain hash
+  const secret = ethers.hexlify(ethers.randomBytes(32));
+  // We need to know the next token ID to include in the hash. Fetch it first.
+  const nextId = await contract.totalMinted();
+  const checkInHash = ethers.keccak256(
+    ethers.solidityPacked(['bytes32', 'uint256'], [secret, nextId])
+  );
+
+  const btn = document.getElementById('btn-mint');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Minting…';
+
+  try {
+    const tx = await contract.mint(wallet, eventName, checkInHash);
+    showToast('Transaction sent, waiting for confirmation…');
+    const receipt = await tx.wait();
+
+    // Parse TicketMinted event
+    let tokenId = nextId; // fallback
+    for (const log of receipt.logs) {
+      try {
+        const parsed = contract.interface.parseLog(log);
+        if (parsed && parsed.name === 'TicketMinted') {
+          tokenId = parsed.args.tokenId;
+          break;
+        }
+      } catch {}
+    }
+
+    document.getElementById('mr-tokenid').textContent = '#' + tokenId.toString();
+    document.getElementById('mr-hash').textContent = checkInHash;
+    document.getElementById('mr-txhash').textContent = receipt.hash;
+    document.getElementById('mint-result').style.display = 'block';
+
+    // Store the secret locally so we can show QR codes for re-minted tickets
+    storeSecret(tokenId.toString(), secret, eventName);
+
+    showToast('Ticket minted! Save the check-in hash.', 'success');
+    document.getElementById('mint-wallet').value = '';
+    document.getElementById('mint-event').value = '';
+  } catch (e) {
+    showToast('Mint failed: ' + (e.reason || e.message), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Mint Ticket';
+  }
+}
+
+// ── My Tickets ──────────────────────────────────────────────────────────────
+async function loadMyTickets() {
+  if (!contract || !currentAccount) return;
+  const el = document.getElementById('tickets-list');
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:1rem 0">Loading…</div>';
+
+  try {
+    const total = Number(await contract.totalMinted());
+    const mine = [];
+
+    for (let i = 0; i < total; i++) {
+      const info = await contract.getTicket(i);
+      if (info.owner.toLowerCase() === currentAccount.toLowerCase()) {
+        mine.push({ id: i, owner: info.owner, eventName: info.eventName, hash: info.checkInHash, used: info.used });
+      }
+    }
+
+    if (mine.length === 0) {
+      el.innerHTML = `<div class="empty"><div class="empty-icon">🎫</div><div>No tickets in this wallet.</div></div>`;
+      return;
+    }
+
+    el.innerHTML = mine.map(t => `
+      <div class="ticket-card ${t.used ? 'used' : ''}">
+        <div class="ticket-meta">
+          <div class="ticket-id">#${t.id}</div>
+          <div class="ticket-event">${escHtml(t.eventName)}</div>
+          <div class="ticket-owner">${t.owner}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px">
+          <span class="ticket-status ${t.used ? 'used' : 'valid'}">${t.used ? 'Used' : 'Valid'}</span>
+          ${!t.used ? `<button class="btn btn-secondary" style="font-size:10px;padding:6px 12px" onclick="showQR(${t.id}, '${escHtml(t.eventName)}', '${t.hash}')">QR</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><div>Error loading tickets.<br><span style="color:var(--muted)">${e.message}</span></div></div>`;
+  }
+}
+
+// ── QR Code ──────────────────────────────────────────────────────────────────
+function showQR(tokenId, eventName, hash) {
+  document.getElementById('qr-token-label').textContent = '#' + tokenId;
+  document.getElementById('qr-event-label').textContent = eventName;
+  document.getElementById('qr-hash-label').textContent = hash;
+
+  const canvas = document.getElementById('qr-canvas');
+  canvas.innerHTML = '';
+
+  // Encode tokenId + hash as JSON payload in the QR
+  const payload = JSON.stringify({ tokenId, hash });
+  new QRCode(canvas, {
+    text: payload,
+    width: 200,
+    height: 200,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H
+  });
+
+  document.getElementById('qr-modal').classList.add('open');
+}
+
+function closeQR(e) {
+  if (!e || e.target === document.getElementById('qr-modal')) {
+    document.getElementById('qr-modal').classList.remove('open');
+  }
+}
+
+// ── Check-in scanner state ───────────────────────────────────────────────────
+let scannerStream = null;
+let scannerActive = false;
+let scannerRAF = null;
+let lastScanned = null;        // debounce: don't re-trigger the same QR twice
+let currentTab = 'scan';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-scan').classList.toggle('active', tab === 'scan');
+  document.getElementById('tab-manual').classList.toggle('active', tab === 'manual');
+  document.getElementById('manual-inputs').style.display = tab === 'manual' ? 'block' : 'none';
+  const cameraArea = document.getElementById('scanner-wrap');
+  const cameraBtn  = document.getElementById('btn-camera');
+  if (tab === 'scan') {
+    cameraArea.style.display = 'block';
+    cameraBtn.style.display  = 'block';
+  } else {
+    stopCamera();
+    cameraArea.style.display = 'none';
+    cameraBtn.style.display  = 'none';
+  }
+}
+
+async function toggleCamera() {
+  if (scannerActive) { stopCamera(); return; }
+
+  const btn = document.getElementById('btn-camera');
+  btn.textContent = 'Starting…';
+  btn.disabled = true;
+
+  try {
+    // Prefer back camera on mobile
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 1280 } }
+    });
+    const video = document.getElementById('scanner-video');
+    video.srcObject = scannerStream;
+    await video.play();
+
+    scannerActive = true;
+    btn.textContent = 'Stop Camera';
+    btn.disabled = false;
+    document.getElementById('scanner-status').textContent = 'Point camera at ticket QR code';
+
+    scanFrame();
+  } catch (e) {
+    btn.textContent = 'Start Camera';
+    btn.disabled = false;
+    if (e.name === 'NotAllowedError') {
+      showToast('Camera permission denied. Allow camera access and try again.', 'error', 5000);
+    } else {
+      showToast('Could not start camera: ' + e.message, 'error');
+    }
+  }
+}
+
+function stopCamera() {
+  scannerActive = false;
+  if (scannerRAF) { cancelAnimationFrame(scannerRAF); scannerRAF = null; }
+  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+  const video = document.getElementById('scanner-video');
+  video.srcObject = null;
+  document.getElementById('btn-camera').textContent = 'Start Camera';
+  document.getElementById('scanner-wrap').style.display = currentTab === 'scan' ? 'block' : 'none';
+}
+
+function scanFrame() {
+  if (!scannerActive) return;
+  const video = document.getElementById('scanner-video');
+  if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+    scannerRAF = requestAnimationFrame(scanFrame);
+    return;
+  }
+
+  // Draw frame to offscreen canvas and run jsQR
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+
+  if (code && code.data !== lastScanned) {
+    lastScanned = code.data;
+    handleScannedQR(code.data);
+  }
+
+  scannerRAF = requestAnimationFrame(scanFrame);
+}
+
+function handleScannedQR(raw) {
+  try {
+    const payload = JSON.parse(raw);
+    if (typeof payload.tokenId === 'undefined' || !payload.hash) throw new Error('bad payload');
+
+    // Flash the frame green briefly
+    document.getElementById('scanner-status').textContent = '✓ QR detected — verifying…';
+    document.getElementById('scanner-frame').style.borderColor = 'var(--accent2)';
+    setTimeout(() => {
+      if (document.getElementById('scanner-frame'))
+        document.getElementById('scanner-frame').style.borderColor = 'var(--accent)';
+    }, 600);
+
+    // Fill the hidden manual fields so checkIn() can read them
+    document.getElementById('ci-tokenid').value = payload.tokenId;
+    document.getElementById('ci-hash').value    = payload.hash;
+
+    // Auto-trigger verification after a short visual pause
+    setTimeout(() => checkIn(), 400);
+  } catch {
+    document.getElementById('scanner-status').textContent = 'Unrecognised QR — keep scanning…';
+    // Reset debounce so it tries again if user adjusts angle
+    setTimeout(() => { lastScanned = null; }, 1500);
+  }
+}
+
+// Stop camera when leaving the check-in page
+const _origShowPage = showPage;  // will be defined below — patched after boot
+
+// ── Check-in ─────────────────────────────────────────────────────────────────
+async function checkIn() {
+  const tokenIdRaw = String(document.getElementById('ci-tokenid').value).trim();
+  const hash       = document.getElementById('ci-hash').value.trim();
+
+  if (tokenIdRaw === '' || isNaN(Number(tokenIdRaw))) { showToast('Enter a valid token ID.', 'error'); return; }
+  if (!hash.startsWith('0x') || hash.length !== 66)   { showToast('Enter a valid 32-byte hex hash (0x + 64 chars).', 'error'); return; }
+
+  const tokenId = Number(tokenIdRaw);
+  const resultEl = document.getElementById('ci-result');
+  const btn      = document.getElementById('btn-checkin');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Verifying…';
+  resultEl.style.display = 'none';
+
+  try {
+    const info = await contract.getTicket(tokenId);
+
+    if (info.used) {
+      showResult('invalid', '✗', 'Already Used', `Token #${tokenId} was already checked in.`);
+      // Let scanner try another QR after delay
+      setTimeout(() => { lastScanned = null; }, 3000);
+      return;
+    }
+
+    if (info.checkInHash.toLowerCase() !== hash.toLowerCase()) {
+      showResult('invalid', '✗', 'Invalid Hash', 'The provided hash does not match this ticket.');
+      setTimeout(() => { lastScanned = null; }, 3000);
+      return;
+    }
+
+    if (currentAccount.toLowerCase() !== contractOwner.toLowerCase()) {
+      showResult('invalid', '⚠', 'Not Authorized', 'Only the contract owner can mark tickets as used.');
+      return;
+    }
+
+    btn.innerHTML = '<span class="spinner"></span> Sending tx…';
+    const tx = await contract.checkIn(tokenId, hash);
+    await tx.wait();
+
+    showResult('valid', '✓', 'Checked In!', `Token #${tokenId} — ${info.eventName} — marked as used on-chain.`);
+    showToast('Check-in recorded on chain!', 'success');
+
+    // Clear fields + reset scanner for next attendee
+    document.getElementById('ci-tokenid').value = '';
+    document.getElementById('ci-hash').value    = '';
+    setTimeout(() => { lastScanned = null; }, 4000);
+  } catch (e) {
+    const msg = e.reason || e.message || 'Unknown error';
+    if (msg.includes('does not exist'))  showResult('invalid', '✗', 'Not Found', `Token #${tokenId} does not exist.`);
+    else if (msg.includes('already used')) showResult('invalid', '✗', 'Already Used', msg);
+    else showResult('invalid', '✗', 'Error', msg);
+    setTimeout(() => { lastScanned = null; }, 3000);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Verify &amp; Check In';
+  }
+}
+
+function showResult(type, icon, title, detail) {
+  const el = document.getElementById('ci-result');
+  document.getElementById('ci-icon').textContent   = icon;
+  document.getElementById('ci-title').textContent  = title;
+  document.getElementById('ci-detail').textContent = detail;
+  el.className    = 'checkin-result ' + type;
+  el.style.display = 'block';
+}
+
+// ── Admin ────────────────────────────────────────────────────────────────────
+async function loadAllTickets() {
+  if (!contract) return;
+  if (currentAccount.toLowerCase() !== contractOwner.toLowerCase()) {
+    showToast('Owner only.', 'error');
+    return;
+  }
+
+  const tbody = document.getElementById('admin-tbody');
+  tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted);padding:1.5rem">Loading…</td></tr>`;
+
+  try {
+    const total = Number(await contract.totalMinted());
+    if (total === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted);padding:1.5rem">No tickets minted yet.</td></tr>`;
+      return;
+    }
+
+    const rows = [];
+    for (let i = 0; i < total; i++) {
+      const info = await contract.getTicket(i);
+      rows.push(`
+        <tr>
+          <td><span style="color:var(--accent);font-family:var(--font-display);font-weight:700">#${i}</span></td>
+          <td>${escHtml(info.eventName)}</td>
+          <td class="mono-sm">${shortAddr(info.owner)}</td>
+          <td class="mono-sm">${info.checkInHash.slice(0,10)}…</td>
+          <td><span class="ticket-status ${info.used ? 'used' : 'valid'}">${info.used ? 'Used' : 'Valid'}</span></td>
+        </tr>
+      `);
+    }
+    tbody.innerHTML = rows.join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:1rem">${e.message}</td></tr>`;
+  }
+}
+
+// ── Local secret storage (for QR re-generation) ──────────────────────────────
+function storeSecret(tokenId, secret, eventName) {
+  const key = `tkxt_secret_${tokenId}`;
+  localStorage.setItem(key, JSON.stringify({ secret, eventName }));
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function shortAddr(addr) {
+  if (!addr) return '';
+  return addr.slice(0, 6) + '…' + addr.slice(-4);
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer = null;
+function showToast(msg, type = '', duration = 3500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', duration);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+boot();
+</script>
+</body>
+</html>
